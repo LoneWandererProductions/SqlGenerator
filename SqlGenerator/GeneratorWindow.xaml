@@ -1,0 +1,65 @@
+﻿<Window x:Class="TableGenerator.GeneratorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:TableGenerator"
+        mc:Ignorable="d"
+        Title="SQL + ExtendedProps Generator" Height="680" Width="1100">
+    <Grid Margin="8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*" />
+            <ColumnDefinition Width="5" />
+            <ColumnDefinition Width="3*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="5" />
+            <RowDefinition Height="200" MinHeight="100" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.ColumnSpan="3" Margin="0,0,0,8">
+            <Button x:Name="BtnGenerate" Width="100" Margin="0,0,6,0" Click="BtnGenerate_Click">Generate</Button>
+            <Button x:Name="BtnCopy" Width="100" Margin="0,0,6,0" Click="BtnCopy_Click">Copy</Button>
+            <Button x:Name="BtnSave" Width="100" Margin="0,0,6,0" Click="BtnSave_Click">Save SQL</Button>
+
+            <CheckBox x:Name="ChkIncludeAudit" IsChecked="True" Margin="8,0,0,0" VerticalAlignment="Center">Audit</CheckBox>
+
+            <TextBlock VerticalAlignment="Center" Margin="12,0,0,0">Table:</TextBlock>
+            <TextBox x:Name="TxtTableName" Width="120" Margin="6,0,0,0" VerticalContentAlignment="Center" />
+
+            <TextBlock VerticalAlignment="Center" Margin="12,0,0,0">Database:</TextBlock>
+            <TextBox x:Name="TxtDatabaseName" Width="120" Margin="6,0,0,0" VerticalContentAlignment="Center" />
+
+            <TextBlock VerticalAlignment="Center" Margin="12,0,0,0" ToolTip="Leave empty for auto-detection">Index Col (Opt):</TextBlock>
+            <TextBox x:Name="TxtIndexColumn" Width="120" Margin="6,0,0,0" VerticalContentAlignment="Center" 
+             ToolTip="Specify a column name to force the 'ActiveOnly' index on it." />
+        </StackPanel>
+
+        <GroupBox Header="Input (one column per line)" Grid.Row="1" Grid.Column="0">
+            <TextBox x:Name="TxtInput" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="13" TextWrapping="NoWrap"/>
+        </GroupBox>
+
+        <GridSplitter Grid.Column="1" Grid.Row="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent" />
+
+        <GroupBox Header="Parsed columns preview" Grid.Row="1" Grid.Column="2">
+            <DataGrid x:Name="GridPreview" AutoGenerateColumns="False" IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="140"/>
+                    <DataGridTextColumn Header="Nullable" Binding="{Binding Nullable}" Width="90"/>
+                    <DataGridTextColumn Header="Default" Binding="{Binding Default}" Width="120"/>
+                    <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </GroupBox>
+
+        <GridSplitter Grid.Row="2" Grid.ColumnSpan="3" Height="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" />
+
+        <GroupBox Header="Generated SQL" Grid.Row="3" Grid.ColumnSpan="3">
+            <TextBox x:Name="TxtOutput" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap"/>
+        </GroupBox>
+
+    </Grid>
+</Window>
