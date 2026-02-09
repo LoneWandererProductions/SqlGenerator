@@ -1,4 +1,12 @@
-﻿using System.Text;
+/*
+ * COPYRIGHT:   See COPYING in the top level directory
+ * PROJECT:     SqlGenerator
+ * FILE:        SqlQuery.cs
+ * PURPOSE:     Creates sql queries for table creation based on a simple input syntax. Also generates extended properties for documentation.
+ * PROGRAMMER:  Peter Geinitz (Wayfarer)
+ */
+
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace SqlGenerator
@@ -23,7 +31,12 @@ namespace SqlGenerator
             @"(?<rest>.*)$",                                  // 3. The Rest (Properties + Description)
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        public IList<ColumnDef> ParseColumns(string input)
+        /// <summary>
+        /// Parses the columns.
+        /// </summary>
+        /// <param name="input">The input.</param>
+        /// <returns>List of Table columns.</returns>
+        public static IList<ColumnDef> ParseColumns(string input)
         {
             var list = new List<ColumnDef>();
             var lines = (input ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
@@ -221,6 +234,11 @@ namespace SqlGenerator
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Builds the column definition.
+        /// </summary>
+        /// <param name="c">The c.</param>
+        /// <returns>Sql query for column</returns>
         private static string BuildColumnDefinition(ColumnDef c)
         {
             var cleanName = c.Name.Trim('[', ']', ' ');
@@ -255,6 +273,11 @@ namespace SqlGenerator
                 ";
         }
 
+        /// <summary>
+        /// Escapes the single quotes.
+        /// </summary>
+        /// <param name="s">The s.</param>
+        /// <returns>Escape some special characters.</returns>
         private static string EscapeSingleQuotes(string s) => (s ?? string.Empty).Replace("'", "''");
     }
 }
