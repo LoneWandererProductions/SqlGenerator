@@ -18,10 +18,9 @@ namespace SqlGenerator
         /// Captures Name, Type (with parens), Properties (middle), and optional Description (quotes at end).
         /// </summary>
         private static readonly Regex LineRegex = new Regex(
-            @"^\s*(?<name>\S+)\s+" +                      // Name
-            @"(?<type>\S+(?:\([^)]+\))?)\s+" +            // Type
-            @"(?<props>[^""]*?)\s*" +                     // Properties (middle)
-            @"(?:\""(?<desc>.*)\"")?\s*$",                // Description (optional quotes)
+            @"^\s*(?<name>\S+)\s+" +                          // 1. Name
+            @"(?<type>[\w\[\]]+(?:\s*\([^)]+\))?)" +          // 2. Type (allows parens like DECIMAL(10,2))
+            @"(?<rest>.*)$",                                  // 3. The Rest (Properties + Description)
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public IList<ColumnDef> ParseColumns(string input)
@@ -34,26 +33,75 @@ namespace SqlGenerator
                 if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--")) continue;
 
                 var m = LineRegex.Match(line);
-                if (!m.Success) continue; // Skip or handle error
+                if (!m.Success) continue;
 
-                // Logic to extract NULL/NOT NULL and DEFAULT
-                var props = m.Groups["props"].Value.Trim();
-                var propsUpper = props.ToUpperInvariant();
+                string name = m.Groups["name"].Value;
+                string type = m.Groups["type"].Value;
+                string rest = m.Groups["rest"].Value.Trim();
 
-                string nullable = propsUpper.Contains("NOT NULL") ? "NOT NULL" : "NULL";
-                string defaultValue = null;
+                string description = string.Empty;
+                string props = rest;
 
-                var defaultMatch = Regex.Match(props, @"DEFAULT\s*\(?.*?\)?", RegexOptions.IgnoreCase);
-                if (defaultMatch.Success) defaultValue = defaultMatch.Value;
+                // --- STRATEGY: Separate Props from Description ---
 
-                list.Add(new ColumnDef(
-                    m.Groups["name"].Value,
-                    m.Groups["type"].Value,
-                    nullable,
-                    defaultValue,
-                    m.Groups["desc"].Value
-                ));
+                // Case A: Explicit Comment "--"
+                int commentIndex = rest.IndexOf("--");
+                if (commentIndex >= 0)
+                {
+                    description = rest.Substring(commentIndex + 2).Trim();
+                    props = rest.Substring(0, commentIndex).Trim();
+                }
+                // Case B: Explicit Quotes "..."
+                else if (rest.Contains("\""))
+                {
+                    var quoteMatch = Regex.Match(rest, @"\""(?<desc>.*)\""");
+                    if (quoteMatch.Success)
+                    {
+                        description = quoteMatch.Groups["desc"].Value;
+                        props = rest.Replace(quoteMatch.Value, "").Trim();
+                    }
+                }
+                // Case C: Implicit / No Delimiter
+                else
+                {
+                    // We assume "props" are keywords (NULL, NOT NULL, DEFAULT). 
+                    // Anything that isn't a keyword is the description.
+
+                    // 1. Remove DEFAULT(...) from the string temporarily to protect it
+                    string tempProps = props;
+                    string defaultValue = null;
+                    var defaultMatch = Regex.Match(props, @"DEFAULT\s*\(?.*?\)?", RegexOptions.IgnoreCase);
+                    if (defaultMatch.Success)
+                    {
+                        defaultValue = defaultMatch.Value;
+                        tempProps = tempProps.Replace(defaultValue, "");
+                    }
+
+                    // 2. Remove NULL / NOT NULL
+                    bool isNotNull = tempProps.IndexOf("NOT NULL", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (isNotNull) tempProps = Regex.Replace(tempProps, "NOT NULL", "", RegexOptions.IgnoreCase);
+
+                    bool isNull = !isNotNull && tempProps.IndexOf("NULL", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (isNull) tempProps = Regex.Replace(tempProps, "NULL", "", RegexOptions.IgnoreCase);
+
+                    // 3. What is left is the Description!
+                    description = tempProps.Trim();
+                }
+
+                // --- FINAL PROPERTY PARSING ---
+                // Now re-evaluate 'props' (or the original context) for the standard flags
+
+                string finalNullable = "NULL";
+                if (props.IndexOf("NOT NULL", StringComparison.OrdinalIgnoreCase) >= 0)
+                    finalNullable = "NOT NULL";
+
+                string finalDefault = null;
+                var defMatch = Regex.Match(props, @"DEFAULT\s*\(?.*?\)?", RegexOptions.IgnoreCase);
+                if (defMatch.Success) finalDefault = defMatch.Value;
+
+                list.Add(new ColumnDef(name, type, finalNullable, finalDefault, description));
             }
+
             return list;
         }
 
