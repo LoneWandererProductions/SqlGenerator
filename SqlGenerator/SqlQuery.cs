@@ -2,121 +2,36 @@
  * COPYRIGHT:   See COPYING in the top level directory
  * PROJECT:     SqlGenerator
  * FILE:        SqlQuery.cs
- * PURPOSE:     Creates sql queries for table creation based on a simple input syntax. Also generates extended properties for documentation.
+ * PURPOSE:     Creates sql queries for table creation using the robust SqlParser.
  * PROGRAMMER:  Peter Geinitz (Wayfarer)
  */
 
 using SqlParser;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace SqlGenerator
 {
     /// <summary>
-    /// Simple parser + generator. Keep small and extendable.
-    /// Syntax (per-line):
-    /// Name Type [NULL|NOT NULL] [DEFAULT(...)] "Description"
-    ///
-    /// Examples:
-    /// Name NVARCHAR(250) NULL "Firmenname (lokalisiert)"
-    /// IsActive BIT NOT NULL DEFAULT(1) "Aktiv-Flag"
+    /// Generator class that converts parsed column definitions into T-SQL scripts.
+    /// Delegates parsing to SqlParser.Executor.
     /// </summary>
     public class SqlQuery
     {
         /// <summary>
-        /// Captures Name, Type (with parens), Properties (middle), and optional Description (quotes at end).
+        /// Parses the input string into column definitions using the SqlParser.
         /// </summary>
-        private static readonly Regex LineRegex = new Regex(
-            @"^\s*(?<name>\S+)\s+" +                          // 1. Name
-            @"(?<type>[\w\[\]]+(?:\s*\([^)]+\))?)" +          // 2. Type (allows parens like DECIMAL(10,2))
-            @"(?<rest>.*)$",                                  // 3. The Rest (Properties + Description)
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-        /// <summary>
-        /// Parses the columns.
-        /// </summary>
-        /// <param name="input">The input.</param>
-        /// <returns>List of Table columns.</returns>
+        /// <param name="input">The raw input string (Name Type Properties...).</param>
+        /// <returns>List of parsed columns.</returns>
         public static IList<ColumnDef> ParseColumns(string input)
         {
-            var list = new List<ColumnDef>();
-            var lines = (input ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            // We use the robust Executor/Tokenizer we built
+            var executor = new Executor();
 
-            foreach (var line in lines.Select(x => x.Trim()))
-            {
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--")) continue;
+            // "ParsingOnly" is just a label for the debug log, since we don't need the table name here
+            var result = executor.ParseAndGenerate(input, "ParsingOnly");
 
-                var m = LineRegex.Match(line);
-                if (!m.Success) continue;
-
-                string name = m.Groups["name"].Value;
-                string type = m.Groups["type"].Value;
-                string rest = m.Groups["rest"].Value.Trim();
-
-                string description = string.Empty;
-                string props = rest;
-
-                // --- STRATEGY: Separate Props from Description ---
-
-                // Case A: Explicit Comment "--"
-                int commentIndex = rest.IndexOf("--");
-                if (commentIndex >= 0)
-                {
-                    description = rest.Substring(commentIndex + 2).Trim();
-                    props = rest.Substring(0, commentIndex).Trim();
-                }
-                // Case B: Explicit Quotes "..."
-                else if (rest.Contains("\""))
-                {
-                    var quoteMatch = Regex.Match(rest, @"\""(?<desc>.*)\""");
-                    if (quoteMatch.Success)
-                    {
-                        description = quoteMatch.Groups["desc"].Value;
-                        props = rest.Replace(quoteMatch.Value, "").Trim();
-                    }
-                }
-                // Case C: Implicit / No Delimiter
-                else
-                {
-                    // We assume "props" are keywords (NULL, NOT NULL, DEFAULT). 
-                    // Anything that isn't a keyword is the description.
-
-                    // 1. Remove DEFAULT(...) from the string temporarily to protect it
-                    string tempProps = props;
-                    string defaultValue = null;
-                    var defaultMatch = Regex.Match(props, @"DEFAULT\s*\(?.*?\)?", RegexOptions.IgnoreCase);
-                    if (defaultMatch.Success)
-                    {
-                        defaultValue = defaultMatch.Value;
-                        tempProps = tempProps.Replace(defaultValue, "");
-                    }
-
-                    // 2. Remove NULL / NOT NULL
-                    bool isNotNull = tempProps.IndexOf("NOT NULL", StringComparison.OrdinalIgnoreCase) >= 0;
-                    if (isNotNull) tempProps = Regex.Replace(tempProps, "NOT NULL", "", RegexOptions.IgnoreCase);
-
-                    bool isNull = !isNotNull && tempProps.IndexOf("NULL", StringComparison.OrdinalIgnoreCase) >= 0;
-                    if (isNull) tempProps = Regex.Replace(tempProps, "NULL", "", RegexOptions.IgnoreCase);
-
-                    // 3. What is left is the Description!
-                    description = tempProps.Trim();
-                }
-
-                // --- FINAL PROPERTY PARSING ---
-                // Now re-evaluate 'props' (or the original context) for the standard flags
-
-                string finalNullable = "NULL";
-                if (props.IndexOf("NOT NULL", StringComparison.OrdinalIgnoreCase) >= 0)
-                    finalNullable = "NOT NULL";
-
-                string finalDefault = null;
-                var defMatch = Regex.Match(props, @"DEFAULT\s*\(?.*?\)?", RegexOptions.IgnoreCase);
-                if (defMatch.Success) finalDefault = defMatch.Value;
-
-                list.Add(new ColumnDef(name, type, finalNullable, finalDefault, description));
-            }
-
-            return list;
+            // Note: result.DebugTrace contains logs/errors if you ever want to expose them
+            return result.Columns;
         }
 
         /// <summary>
@@ -151,11 +66,12 @@ namespace SqlGenerator
             sb.AppendLine("    [ID] INT IDENTITY(1,1) NOT NULL,");
 
             // 2. Columns
-            // Since we ALWAYS add a PK constraint at the end, every column line can safely have a comma.
             foreach (var col in columns)
             {
-                sb.Append("    " + BuildColumnDefinition(col) + ","); // Append Comma here
+                // Build the definition: [Name] Type NULL...
+                sb.Append("    " + BuildColumnDefinition(col) + ",");
 
+                // Add the comment if exists
                 if (!string.IsNullOrWhiteSpace(col.Description))
                 {
                     sb.Append(" -- " + col.Description.Trim('"', ' '));
@@ -194,11 +110,11 @@ namespace SqlGenerator
                 if (string.IsNullOrEmpty(targetCol))
                 {
                     targetCol = columns.FirstOrDefault(c =>
-                                    c.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase) ||
-                                    c.Name.EndsWith("Key", StringComparison.OrdinalIgnoreCase) ||
-                                    c.Name.EndsWith("No", StringComparison.OrdinalIgnoreCase))?.Name
-                                ?? columns.FirstOrDefault(c => c.Type.Contains("UNIQUEIDENTIFIER", StringComparison.OrdinalIgnoreCase))?.Name
-                                ?? columns.FirstOrDefault(c => c.Type.Contains("INT", StringComparison.OrdinalIgnoreCase))?.Name;
+                                        c.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase) ||
+                                        c.Name.EndsWith("Key", StringComparison.OrdinalIgnoreCase) ||
+                                        c.Name.EndsWith("No", StringComparison.OrdinalIgnoreCase))?.Name
+                                    ?? columns.FirstOrDefault(c => c.Type.Contains("UNIQUEIDENTIFIER", StringComparison.OrdinalIgnoreCase))?.Name
+                                    ?? columns.FirstOrDefault(c => c.Type.Contains("INT", StringComparison.OrdinalIgnoreCase))?.Name;
                 }
 
                 if (!string.IsNullOrEmpty(targetCol))
@@ -236,13 +152,13 @@ namespace SqlGenerator
         }
 
         /// <summary>
-        /// Builds the column definition.
+        /// Builds the column definition string.
         /// </summary>
-        /// <param name="c">The c.</param>
-        /// <returns>Sql query for column</returns>
         private static string BuildColumnDefinition(ColumnDef c)
         {
+            // Normalize Name: Ensure it's clean so we can wrap it in brackets ourselves
             var cleanName = c.Name.Trim('[', ']', ' ');
+
             var sb = new StringBuilder();
             sb.Append($"[{cleanName}] {c.Type}");
 
@@ -253,12 +169,8 @@ namespace SqlGenerator
         }
 
         /// <summary>
-        /// Generates the extended property.
+        /// Generates the sp_addextendedproperty script.
         /// </summary>
-        /// <param name="tableName">Name of the table.</param>
-        /// <param name="columnName">Name of the column.</param>
-        /// <param name="description">The description.</param>
-        /// <returns>Returns SQL query part for extended Properties</returns>
         private string GenerateExtendedProperty(string tableName, string columnName, string description)
         {
             var cleanTableName = tableName.Trim('[', ']');
@@ -274,11 +186,6 @@ namespace SqlGenerator
                 ";
         }
 
-        /// <summary>
-        /// Escapes the single quotes.
-        /// </summary>
-        /// <param name="s">The s.</param>
-        /// <returns>Escape some special characters.</returns>
         private static string EscapeSingleQuotes(string s) => (s ?? string.Empty).Replace("'", "''");
     }
 }

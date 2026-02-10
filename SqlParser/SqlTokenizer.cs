@@ -6,8 +6,6 @@
  * PROGRAMMER:  Peter Geinitz (Wayfarer)
  */
 
-using System.Collections.Generic;
-
 namespace SqlParser
 { 
     public class SqlTokenizer
