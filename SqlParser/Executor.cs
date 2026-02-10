@@ -2,10 +2,12 @@
  * COPYRIGHT:   See COPYING in the top level directory
  * PROJECT:     SqlParser
  * FILE:        Executor.cs
- * PURPOSE:     Your file purpose here
+ * PURPOSE:     Parses simplified SQL lines and generates structured column definitions.
  * PROGRAMMER:  Peter Geinitz (Wayfarer)
  */
 
+using System;
+using System.Collections.Generic;
 using System.Text;
 
 namespace SqlParser
@@ -24,9 +26,16 @@ namespace SqlParser
             foreach (var line in lines)
             {
                 var trimmed = line.Trim();
-                if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith("--"))
+                if (string.IsNullOrWhiteSpace(trimmed))
                 {
-                    result.Log("SKIP", $"Ignored comment: '{trimmed}'");
+                    continue;
+                }
+
+                // Note: We let the Tokenizer handle comments starting with '--' 
+                // via the TokenType.Comment, so we don't skip them here unless the line is ONLY a comment.
+                if (trimmed.StartsWith("--"))
+                {
+                    result.Log("SKIP", $"Ignored comment line: '{trimmed}'");
                     continue;
                 }
 
@@ -66,12 +75,14 @@ namespace SqlParser
             var tokens = new SqlTokenizer().Tokenize(line);
             if (tokens.Count == 0 || tokens.Peek().Type == TokenType.EndOfLine) return null;
 
-            // 1. Expect Name
+            // 1. Expect Name & Normalize Brackets
             var nameToken = tokens.Dequeue();
-            string name = nameToken.Value;
+            // Ensure name always has brackets [Name]
+            string name = $"[{nameToken.Value.Trim('[', ']')}]";
 
             // 2. Expect Type
             if (tokens.Count == 0) return new ColumnDef(name, "UNKNOWN", "NULL", null, ""); // Safety
+
             var typeToken = tokens.Dequeue();
             string type = typeToken.Value;
 
@@ -98,8 +109,12 @@ namespace SqlParser
 
                 string upperVal = t.Value.ToUpperInvariant();
 
-                // FIX 2: Added safety check (tokens.Count > 0) before Peeking
-                if (upperVal == "NOT" && tokens.Count > 0 && tokens.Peek().Value.ToUpperInvariant() == "NULL")
+                // FIX: Check for Comment Token (from -- syntax)
+                if (t.Type == TokenType.Comment)
+                {
+                    desc = t.Value;
+                }
+                else if (upperVal == "NOT" && tokens.Count > 0 && tokens.Peek().Value.ToUpperInvariant() == "NULL")
                 {
                     nullable = "NOT NULL";
                     tokens.Dequeue(); // Consume 'NULL'
@@ -110,7 +125,7 @@ namespace SqlParser
                 }
                 else if (upperVal.StartsWith("DEFAULT"))
                 {
-                    // FIX 3: Handle both DEFAULT(0) and DEFAULT 0
+                    // Handle both DEFAULT(0) and DEFAULT 0
                     if (tokens.Count > 0 && tokens.Peek().Type == TokenType.OpenParen)
                     {
                         def = "DEFAULT" + ReconstructGroup(tokens);
@@ -127,8 +142,8 @@ namespace SqlParser
                 }
                 else
                 {
-                    // FIX 4: Capture implicit descriptions (words without quotes)
-                    // If it's not a keyword, assume it's part of the description text
+                    // Capture implicit descriptions (words without quotes)
+                    // Only append if we don't have a comment/quote description yet, or append to it.
                     desc += (desc.Length > 0 ? " " : "") + t.Value;
                 }
             }

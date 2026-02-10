@@ -8,5 +8,14 @@
 
 namespace SqlParser
 {
-    public enum TokenType { Identifier, OpenParen, CloseParen, Comma, StringLiteral, EndOfLine }
+    public enum TokenType
+    { 
+        Identifier, 
+        OpenParen, 
+        CloseParen, 
+        Comma, 
+        StringLiteral,
+        EndOfLine,
+        Comment
+    }
 }

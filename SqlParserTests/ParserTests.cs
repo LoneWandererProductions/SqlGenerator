@@ -6,9 +6,7 @@
  * PROGRAMMER:  Peter Geinitz (Wayfarer)
  */
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SqlParser;
-using System.Linq;
 
 namespace SqlParserTests
 {
@@ -121,6 +119,40 @@ namespace SqlParserTests
             Assert.AreEqual("NOT NULL", result.Nullable);
             Assert.AreEqual("DEFAULT(GETDATE())", result.Default);
             Assert.AreEqual("Creation Timestamp", result.Description);
+        }
+
+
+        [TestMethod]
+        public void Parse_SwitchCommentStyle()
+        {
+            // Arrange
+            string input = "[CreatedDate] DATETIME NOT NULL DEFAULT(GETDATE()) --Creation Timestamp";
+
+            // Act
+            var result = _executor.ParseLine(input);
+
+            // Assert
+            Assert.AreEqual("[CreatedDate]", result.Name);
+            Assert.AreEqual("DATETIME", result.Type);
+            Assert.AreEqual("NOT NULL", result.Nullable);
+            Assert.AreEqual("DEFAULT(GETDATE())", result.Default);
+            Assert.AreEqual("Creation Timestamp", result.Description);
+        }
+
+        [TestMethod]
+        public void Parse_ChangeParentheseStyle()
+        {
+            // Arrange
+            string input = "CreatedDate DATETIME NOT NULL DEFAULT(GETDATE())";
+
+            // Act
+            var result = _executor.ParseLine(input);
+
+            // Assert
+            Assert.AreEqual("[CreatedDate]", result.Name);
+            Assert.AreEqual("DATETIME", result.Type);
+            Assert.AreEqual("NOT NULL", result.Nullable);
+            Assert.AreEqual("DEFAULT(GETDATE())", result.Default);
         }
     }
 }
