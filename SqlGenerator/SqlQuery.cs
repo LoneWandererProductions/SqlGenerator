@@ -6,6 +6,7 @@
  * PROGRAMMER:  Peter Geinitz (Wayfarer)
  */
 
+using SqlParser;
 using System.Text;
 using System.Text.RegularExpressions;
 
